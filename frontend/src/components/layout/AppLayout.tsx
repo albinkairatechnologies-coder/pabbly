@@ -3,17 +3,17 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/inbox": "Live Inbox",
-  "/contacts": "Contacts",
+  "/dashboard":   "Dashboard",
+  "/inbox":       "Live Inbox",
+  "/contacts":    "Contacts",
   "/automations": "Automations",
-  "/flows": "Flow Builder",
-  "/broadcasts": "Broadcasts",
-  "/templates": "Templates",
-  "/analytics": "Analytics",
-  "/integrations": "Integrations",
-  "/billing": "Billing",
-  "/settings": "Settings",
+  "/flows":       "Flow Builder",
+  "/broadcasts":  "Broadcasts",
+  "/templates":   "Templates",
+  "/analytics":   "Analytics",
+  "/integrations":"Integrations",
+  "/billing":     "Billing",
+  "/settings":    "Settings",
 };
 
 export default function AppLayout() {
@@ -21,7 +21,7 @@ export default function AppLayout() {
   const title = TITLES[pathname] ?? TITLES[`/${pathname.split("/")[1]}`] ?? "FlowWA";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar title={title} />

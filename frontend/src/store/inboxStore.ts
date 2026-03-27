@@ -76,6 +76,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
 
     ws.onopen = () => set({ wsConnected: true });
     ws.onclose = () => set({ wsConnected: false, ws: null });
+    ws.onerror = () => set({ wsConnected: false });
 
     ws.onmessage = (event) => {
       const payload = JSON.parse(event.data);
@@ -86,14 +87,21 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         if (state.activeConversationId === payload.conversation_id) {
           set((s) => ({ messages: [...s.messages, payload.message] }));
         }
-        // Update conversation last_message_at + unread
-        set((s) => ({
-          conversations: s.conversations.map((c) =>
-            c.id === payload.conversation_id
-              ? { ...c, unread_count: c.unread_count + 1, last_message_at: payload.message.created_at }
-              : c
-          ),
-        }));
+
+        const exists = state.conversations.find((c) => c.id === payload.conversation_id);
+        if (exists) {
+          // Update existing conversation unread + timestamp
+          set((s) => ({
+            conversations: s.conversations.map((c) =>
+              c.id === payload.conversation_id
+                ? { ...c, unread_count: c.unread_count + 1, last_message_at: payload.message.created_at }
+                : c
+            ),
+          }));
+        } else {
+          // New conversation — fetch full list to get it with contact info
+          get().fetchConversations(workspaceId);
+        }
       }
 
       if (payload.type === "status_update") {
