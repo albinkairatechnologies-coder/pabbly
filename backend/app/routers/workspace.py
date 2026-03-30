@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.dependencies import CurrentUser, DbDep
@@ -62,12 +63,55 @@ async def update_whatsapp(workspace_id: uuid.UUID, body: WhatsAppCredentials, us
 @router.get("/{workspace_id}/whatsapp/test")
 async def test_whatsapp(workspace_id: uuid.UUID, user: CurrentUser, db: DbDep):
     workspace = await _get_member_workspace(workspace_id, user.id, db)
-    if not workspace.whatsapp_access_token or not workspace.whatsapp_phone_number_id:
-        raise HTTPException(status_code=400, detail="WhatsApp credentials not configured")
-    from app.services.whatsapp import WhatsAppService
-    wa = WhatsAppService(workspace.whatsapp_access_token, workspace.whatsapp_phone_number_id)
-    info = await wa.get_phone_number_info()
+    provider = getattr(workspace, "whatsapp_provider", "meta") or "meta"
+    if provider == "twilio":
+        if not workspace.twilio_account_sid or not workspace.twilio_auth_token:
+            raise HTTPException(status_code=400, detail="Twilio credentials not configured")
+        from app.services.twilio_service import TwilioWhatsAppService
+        svc = TwilioWhatsAppService(
+            workspace.twilio_account_sid,
+            workspace.twilio_auth_token,
+            workspace.twilio_whatsapp_number or "",
+        )
+    else:
+        if not workspace.whatsapp_access_token or not workspace.whatsapp_phone_number_id:
+            raise HTTPException(status_code=400, detail="WhatsApp credentials not configured")
+        from app.services.whatsapp import WhatsAppService
+        svc = WhatsAppService(workspace.whatsapp_access_token, workspace.whatsapp_phone_number_id)
+    info = await svc.get_phone_number_info()
     return info
+
+
+class ProviderUpdate(BaseModel):
+    provider: str
+
+
+@router.put("/{workspace_id}/provider")
+async def update_provider(workspace_id: uuid.UUID, body: ProviderUpdate, user: CurrentUser, db: DbDep):
+    if body.provider not in ("meta", "twilio"):
+        raise HTTPException(status_code=400, detail="Invalid provider. Use 'meta' or 'twilio'")
+    workspace = await _get_member_workspace(workspace_id, user.id, db)
+    workspace.whatsapp_provider = body.provider
+    await db.commit()
+    return {"provider": body.provider}
+
+
+class TwilioCredentials(BaseModel):
+    account_sid: str
+    auth_token: str
+    whatsapp_number: str
+
+
+@router.put("/{workspace_id}/twilio", response_model=WorkspaceOut)
+async def update_twilio(workspace_id: uuid.UUID, body: TwilioCredentials, user: CurrentUser, db: DbDep):
+    workspace = await _get_member_workspace(workspace_id, user.id, db)
+    workspace.twilio_account_sid = body.account_sid
+    workspace.twilio_auth_token = body.auth_token
+    workspace.twilio_whatsapp_number = body.whatsapp_number
+    workspace.whatsapp_provider = "twilio"
+    await db.commit()
+    await db.refresh(workspace)
+    return workspace
 
 
 @router.get("/{workspace_id}/members", response_model=list[MemberOut])

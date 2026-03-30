@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,12 +27,22 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
-# ── Inbound webhook ───────────────────────────────────────────────────────────
+# ── Meta inbound webhook ──────────────────────────────────────────────────────
 @router.post("/whatsapp")
 async def receive_webhook(request: Request, background: BackgroundTasks):
     payload = await request.json()
     background.add_task(_process_webhook, payload)
     return {"status": "ok"}
+
+
+# ── Twilio inbound webhook ────────────────────────────────────────────────────
+@router.post("/twilio")
+async def receive_twilio_webhook(request: Request, background: BackgroundTasks):
+    form = await request.form()
+    payload = dict(form)
+    background.add_task(_process_twilio_webhook, payload)
+    # Twilio expects TwiML response
+    return Response(content="<Response></Response>", media_type="application/xml")
 
 
 async def _process_webhook(payload: dict):
@@ -286,6 +297,12 @@ async def _trigger_matching_flows(
         # Keyword
         elif trigger_str in ("keyword", "trigger_keyword") and message_text:
             raw = cfg.get("keywords", cfg.get("keyword", ""))
+            if not raw and flow.nodes:
+                # fallback: read from trigger node data directly
+                for n in flow.nodes:
+                    if str(n.get("type", "")).startswith("trigger"):
+                        raw = n.get("data", {}).get("keyword", n.get("data", {}).get("keywords", ""))
+                        break
             keywords = [k.strip().lower() for k in raw.split(",") if k.strip()]
             match_type = cfg.get("match_type", "contains")
             for kw in keywords:
@@ -328,3 +345,135 @@ async def _trigger_matching_flows(
                 )
             except Exception:
                 pass
+
+
+async def _process_twilio_webhook(payload: dict):
+    """
+    Process inbound Twilio WhatsApp message.
+    Twilio sends form data with fields: From, To, Body, MessageSid, NumMedia, MediaUrl0 etc.
+    """
+    async with AsyncSessionLocal() as db:
+        # Extract fields from Twilio payload
+        from_number = payload.get("From", "").replace("whatsapp:", "")
+        to_number = payload.get("To", "").replace("whatsapp:", "")
+        body = payload.get("Body", "")
+        message_sid = payload.get("MessageSid", "")
+        num_media = int(payload.get("NumMedia", 0))
+
+        if not from_number:
+            return
+
+        # Find workspace by Twilio number
+        result = await db.execute(
+            select(Workspace).where(Workspace.twilio_whatsapp_number == to_number)
+        )
+        workspace = result.scalar_one_or_none()
+        if not workspace:
+            # Try without + prefix
+            result = await db.execute(
+                select(Workspace).where(
+                    Workspace.twilio_whatsapp_number.in_([to_number, f"+{to_number}"])
+                )
+            )
+            workspace = result.scalar_one_or_none()
+        if not workspace:
+            return
+
+        # Build a Meta-compatible msg dict
+        msg_type = "text"
+        content: dict = {"text": body}
+
+        if num_media > 0:
+            media_url = payload.get("MediaUrl0", "")
+            media_type = payload.get("MediaContentType0", "")
+            if "image" in media_type:
+                msg_type = "image"
+                content = {"media_id": message_sid, "caption": body, "url": media_url}
+            elif "audio" in media_type:
+                msg_type = "audio"
+                content = {"media_id": message_sid, "url": media_url}
+            elif "video" in media_type:
+                msg_type = "video"
+                content = {"media_id": message_sid, "caption": body, "url": media_url}
+            else:
+                msg_type = "document"
+                content = {"media_id": message_sid, "url": media_url}
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Upsert contact
+        contact_result = await db.execute(
+            select(Contact).where(
+                Contact.workspace_id == workspace.id,
+                Contact.phone_number == from_number,
+            )
+        )
+        contact = contact_result.scalar_one_or_none()
+        if not contact:
+            contact = Contact(
+                workspace_id=workspace.id,
+                phone_number=from_number,
+                last_seen=now,
+            )
+            db.add(contact)
+            await db.flush()
+        else:
+            contact.last_seen = now
+
+        # Upsert conversation
+        conv_result = await db.execute(
+            select(Conversation).where(
+                Conversation.workspace_id == workspace.id,
+                Conversation.contact_id == contact.id,
+            )
+        )
+        conversation = conv_result.scalar_one_or_none()
+        if not conversation:
+            conversation = Conversation(
+                workspace_id=workspace.id,
+                contact_id=contact.id,
+                status=ConversationStatus.open,
+                last_message_at=now,
+                unread_count=1,
+            )
+            db.add(conversation)
+            await db.flush()
+        else:
+            conversation.last_message_at = now
+            conversation.unread_count = (conversation.unread_count or 0) + 1
+
+        message = Message(
+            workspace_id=workspace.id,
+            contact_id=contact.id,
+            conversation_id=conversation.id,
+            direction=MessageDirection.inbound,
+            message_type=_map_type(msg_type),
+            content=content,
+            status=MessageStatus.delivered,
+            meta_message_id=message_sid,
+        )
+        db.add(message)
+        await db.flush()
+
+        contact.total_messages_received = (contact.total_messages_received or 0) + 1
+
+        # Trigger flows
+        fake_msg = {"from": from_number, "id": message_sid, "type": msg_type}
+        await _trigger_matching_flows(db, workspace, contact, fake_msg, content, conversation)
+
+        # Broadcast to live inbox
+        await manager.broadcast(workspace.id, {
+            "type": "new_message",
+            "conversation_id": str(conversation.id),
+            "message": {
+                "id": str(message.id),
+                "direction": "inbound",
+                "message_type": msg_type,
+                "content": content,
+                "meta_message_id": message_sid,
+                "created_at": now,
+                "contact": {"id": str(contact.id), "name": contact.name, "phone": from_number},
+            },
+        })
+
+        await db.commit()

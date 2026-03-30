@@ -8,56 +8,57 @@ import {
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 
 // ── Node catalogue ────────────────────────────────────────
+// Nodes marked twilio:false are hidden when provider is Twilio
 export const NODE_CATEGORIES = [
   {
     category: "Triggers",
     nodes: [
-      { type: "trigger_keyword",      label: "Keyword Trigger",    icon: Zap,                color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
-      { type: "trigger_first",        label: "First Message",      icon: PhoneCall,           color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
-      { type: "trigger_optin",        label: "Opt-in",             icon: UserCheck,           color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
-      { type: "trigger_button",       label: "Button Reply",       icon: MousePointerClick,   color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
-      { type: "trigger_list",         label: "List Reply",         icon: List,                color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
-      { type: "trigger_schedule",     label: "Schedule",           icon: CalendarClock,       color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
-      { type: "trigger_webhook",      label: "Webhook",            icon: Webhook,             color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600" },
+      { type: "trigger_keyword",      label: "Keyword Trigger",    icon: Zap,                color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: true },
+      { type: "trigger_first",        label: "First Message",      icon: PhoneCall,           color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: true },
+      { type: "trigger_optin",        label: "Opt-in",             icon: UserCheck,           color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: true },
+      { type: "trigger_button",       label: "Button Reply",       icon: MousePointerClick,   color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: false },
+      { type: "trigger_list",         label: "List Reply",         icon: List,                color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: false },
+      { type: "trigger_schedule",     label: "Schedule",           icon: CalendarClock,       color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: true },
+      { type: "trigger_webhook",      label: "Webhook",            icon: Webhook,             color: "border-green-500",   bg: "bg-green-50",   text: "text-green-600",  twilio: true },
     ],
   },
   {
     category: "WhatsApp",
     nodes: [
-      { type: "send_message",         label: "Send Text",          icon: MessageSquare,       color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
-      { type: "send_image",           label: "Send Image",         icon: Image,               color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
-      { type: "send_buttons",         label: "Send Buttons",       icon: MousePointerClick,   color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
-      { type: "send_list",            label: "Send List Menu",     icon: LayoutList,          color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
-      { type: "send_template",        label: "Send Template",      icon: FileText,            color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
-      { type: "send_audio",           label: "Send Audio",         icon: MessageCircle,       color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
-      { type: "wait_for_reply",       label: "Wait for Reply",     icon: Reply,               color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600" },
+      { type: "send_message",         label: "Send Text",          icon: MessageSquare,       color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: true },
+      { type: "send_image",           label: "Send Image",         icon: Image,               color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: true },
+      { type: "send_buttons",         label: "Send Buttons",       icon: MousePointerClick,   color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: false },
+      { type: "send_list",            label: "Send List Menu",     icon: LayoutList,          color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: false },
+      { type: "send_template",        label: "Send Template",      icon: FileText,            color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: false },
+      { type: "send_audio",           label: "Send Audio",         icon: MessageCircle,       color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: true },
+      { type: "wait_for_reply",       label: "Wait for Reply",     icon: Reply,               color: "border-blue-500",    bg: "bg-blue-50",    text: "text-blue-600",   twilio: true },
     ],
   },
   {
     category: "Contact",
     nodes: [
-      { type: "add_tag",              label: "Add Tag",            icon: Tag,                 color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600" },
-      { type: "remove_tag",           label: "Remove Tag",         icon: UserX,               color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600" },
-      { type: "update_contact",       label: "Update Contact",     icon: UserCog,             color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600" },
-      { type: "assign_agent",         label: "Assign Agent",       icon: UserCheck,           color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600" },
-      { type: "resolve_conversation", label: "Resolve Chat",       icon: Send,                color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600" },
+      { type: "add_tag",              label: "Add Tag",            icon: Tag,                 color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600", twilio: true },
+      { type: "remove_tag",           label: "Remove Tag",         icon: UserX,               color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600", twilio: true },
+      { type: "update_contact",       label: "Update Contact",     icon: UserCog,             color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600", twilio: true },
+      { type: "assign_agent",         label: "Assign Agent",       icon: UserCheck,           color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600", twilio: true },
+      { type: "resolve_conversation", label: "Resolve Chat",       icon: Send,                color: "border-violet-500",  bg: "bg-violet-50",  text: "text-violet-600", twilio: true },
     ],
   },
   {
     category: "Logic",
     nodes: [
-      { type: "condition",            label: "Condition",          icon: GitBranch,           color: "border-orange-500",  bg: "bg-orange-50",  text: "text-orange-600" },
-      { type: "ab_split",             label: "A/B Split",          icon: SplitSquareVertical, color: "border-orange-500",  bg: "bg-orange-50",  text: "text-orange-600" },
-      { type: "wait",                 label: "Wait / Delay",       icon: Clock,               color: "border-purple-500",  bg: "bg-purple-50",  text: "text-purple-600" },
-      { type: "jump_flow",            label: "Jump to Flow",       icon: Repeat,              color: "border-orange-500",  bg: "bg-orange-50",  text: "text-orange-600" },
+      { type: "condition",            label: "Condition",          icon: GitBranch,           color: "border-orange-500",  bg: "bg-orange-50",  text: "text-orange-600", twilio: true },
+      { type: "ab_split",             label: "A/B Split",          icon: SplitSquareVertical, color: "border-orange-500",  bg: "bg-orange-50",  text: "text-orange-600", twilio: true },
+      { type: "wait",                 label: "Wait / Delay",       icon: Clock,               color: "border-purple-500",  bg: "bg-purple-50",  text: "text-purple-600", twilio: true },
+      { type: "jump_flow",            label: "Jump to Flow",       icon: Repeat,              color: "border-orange-500",  bg: "bg-orange-50",  text: "text-orange-600", twilio: true },
     ],
   },
   {
     category: "Integrations",
     nodes: [
-      { type: "action",               label: "HTTP Request",       icon: Globe,               color: "border-teal-500",    bg: "bg-teal-50",    text: "text-teal-600" },
-      { type: "send_email",           label: "Send Email",         icon: Mail,                color: "border-teal-500",    bg: "bg-teal-50",    text: "text-teal-600" },
-      { type: "google_sheets",        label: "Google Sheets",      icon: FileText,            color: "border-teal-500",    bg: "bg-teal-50",    text: "text-teal-600" },
+      { type: "action",               label: "HTTP Request",       icon: Globe,               color: "border-teal-500",    bg: "bg-teal-50",    text: "text-teal-600",   twilio: true },
+      { type: "send_email",           label: "Send Email",         icon: Mail,                color: "border-teal-500",    bg: "bg-teal-50",    text: "text-teal-600",   twilio: true },
+      { type: "google_sheets",        label: "Google Sheets",      icon: FileText,            color: "border-teal-500",    bg: "bg-teal-50",    text: "text-teal-600",   twilio: true },
     ],
   },
 ];

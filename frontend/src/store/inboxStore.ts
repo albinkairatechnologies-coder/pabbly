@@ -69,7 +69,10 @@ export const useInboxStore = create<InboxState>((set, get) => ({
 
   connectWS: (workspaceId) => {
     const existing = get().ws;
-    if (existing) existing.close();
+    if (existing) {
+      existing.onclose = null; // prevent state reset on intentional close
+      existing.close();
+    }
 
     const wsUrl = `${import.meta.env.VITE_WS_URL ?? "ws://localhost:8000"}/ws/${workspaceId}`;
     const ws = new WebSocket(wsUrl);
@@ -83,9 +86,13 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       const state = get();
 
       if (payload.type === "new_message") {
-        // Append to messages if this conversation is active
+        // Append only if message not already in list (dedup by id)
         if (state.activeConversationId === payload.conversation_id) {
-          set((s) => ({ messages: [...s.messages, payload.message] }));
+          set((s) => {
+            const alreadyExists = s.messages.some((m) => m.id === payload.message.id);
+            if (alreadyExists) return s;
+            return { messages: [...s.messages, payload.message] };
+          });
         }
 
         const exists = state.conversations.find((c) => c.id === payload.conversation_id);

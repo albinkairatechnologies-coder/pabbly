@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, Copy, Eye, EyeOff, Users, Smartphone, Building2 } from "lucide-react";
+import { CheckCircle, Copy, Eye, EyeOff, Users, Smartphone, Building2, Phone, ToggleLeft, ToggleRight } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import api from "../api/client";
 import Button from "../components/ui/Button";
@@ -9,6 +9,12 @@ import Badge from "../components/ui/Badge";
 // ── API helpers ───────────────────────────────────────────
 const saveWhatsApp = (workspaceId: string, body: object) =>
   api.put(`/workspaces/${workspaceId}/whatsapp`, body).then((r) => r.data);
+
+const saveTwilio = (workspaceId: string, body: object) =>
+  api.put(`/workspaces/${workspaceId}/twilio`, body).then((r) => r.data);
+
+const setProvider = (workspaceId: string, provider: string) =>
+  api.put(`/workspaces/${workspaceId}/provider`, { provider }).then((r) => r.data);
 
 const getMembers = (workspaceId: string) =>
   api.get(`/workspaces/${workspaceId}/members`).then((r) => r.data);
@@ -49,6 +55,10 @@ function Section({ icon: Icon, title, subtitle, children }: {
 export default function Settings() {
   const { workspace, setWorkspace, user } = useAuthStore();
 
+  // Active provider
+  const [activeProvider, setActiveProvider] = useState<string>(workspace?.whatsapp_provider ?? "meta");
+  const [switchingProvider, setSwitchingProvider] = useState(false);
+
   // Workspace name
   const [wsName, setWsName] = useState(workspace?.name ?? "");
   const [savingWs, setSavingWs] = useState(false);
@@ -66,6 +76,15 @@ export default function Settings() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+  // Twilio credentials
+  const [twilio, setTwilio] = useState({ account_sid: "", auth_token: "", whatsapp_number: "+14155238886" });
+  const [showTwilioToken, setShowTwilioToken] = useState(false);
+  const [savingTwilio, setSavingTwilio] = useState(false);
+  const [twilioSaved, setTwilioSaved] = useState(false);
+  const [twilioTestResult, setTwilioTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testingTwilio, setTestingTwilio] = useState(false);
+  const twilioConnected = !!(workspace as any)?.twilio_whatsapp_number;
+
   // Team members
   const [members, setMembers] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -75,12 +94,31 @@ export default function Settings() {
   useEffect(() => {
     if (!workspace) return;
     setWsName(workspace.name);
-    // Pre-fill phone number id if already saved
+    setActiveProvider((workspace as any).whatsapp_provider ?? "meta");
     if (workspace.whatsapp_phone_number_id) {
       setCreds((c) => ({ ...c, phone_number_id: workspace.whatsapp_phone_number_id! }));
     }
+    if ((workspace as any).twilio_whatsapp_number) {
+      setTwilio((t) => ({ ...t, whatsapp_number: (workspace as any).twilio_whatsapp_number }));
+    }
     getMembers(workspace.id).then(setMembers).catch(() => {});
   }, [workspace?.id]);
+
+  const handleSwitchProvider = async (provider: string) => {
+    if (!workspace || provider === activeProvider) return;
+    setSwitchingProvider(true);
+    try {
+      await setProvider(workspace.id, provider);
+      setActiveProvider(provider);
+      const updated = { ...workspace, whatsapp_provider: provider } as any;
+      setWorkspace(updated);
+      localStorage.setItem("workspace", JSON.stringify(updated));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail ?? "Failed to switch provider");
+    } finally {
+      setSwitchingProvider(false);
+    }
+  };
 
   // ── Save workspace name ───────────────────────────────
   const handleSaveWorkspace = async () => {
@@ -137,6 +175,43 @@ export default function Settings() {
     }
   };
 
+  // ── Save Twilio credentials ──────────────────────────
+  const handleSaveTwilio = async () => {
+    if (!workspace) return;
+    if (!twilio.account_sid || !twilio.auth_token || !twilio.whatsapp_number) {
+      alert("Please fill in all Twilio fields");
+      return;
+    }
+    setSavingTwilio(true);
+    try {
+      const updated = await saveTwilio(workspace.id, twilio);
+      const newWs = { ...workspace, ...updated };
+      setWorkspace(newWs);
+      localStorage.setItem("workspace", JSON.stringify(newWs));
+      setTwilioSaved(true);
+      setTwilioTestResult(null);
+      setTimeout(() => setTwilioSaved(false), 3000);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail ?? "Failed to save Twilio credentials");
+    } finally {
+      setSavingTwilio(false);
+    }
+  };
+
+  const handleTestTwilio = async () => {
+    if (!workspace) return;
+    setTestingTwilio(true);
+    setTwilioTestResult(null);
+    try {
+      const data = await testWhatsApp(workspace.id);
+      setTwilioTestResult({ ok: true, message: `Connected! ${data.verified_name ?? data.display_phone_number ?? "Twilio OK"}` });
+    } catch (err: any) {
+      setTwilioTestResult({ ok: false, message: err?.response?.data?.detail ?? "Connection failed" });
+    } finally {
+      setTestingTwilio(false);
+    }
+  };
+
   // ── Invite member ─────────────────────────────────────
   const handleInvite = async () => {
     if (!workspace || !inviteEmail.trim()) return;
@@ -167,6 +242,55 @@ export default function Settings() {
   return (
     <div className="space-y-6 max-w-2xl">
 
+      {/* ── Active Provider Toggle ── */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <p className="text-sm font-semibold text-gray-700 mb-3">Active WhatsApp Provider</p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleSwitchProvider("twilio")}
+            disabled={switchingProvider}
+            className={`flex-1 flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
+              activeProvider === "twilio"
+                ? "border-green-500 bg-green-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Phone size={16} className={activeProvider === "twilio" ? "text-green-600" : "text-gray-400"} />
+              <span className={`text-sm font-medium ${activeProvider === "twilio" ? "text-green-700" : "text-gray-600"}`}>
+                Twilio WhatsApp
+              </span>
+            </div>
+            {activeProvider === "twilio"
+              ? <ToggleRight size={22} className="text-green-600" />
+              : <ToggleLeft size={22} className="text-gray-300" />}
+          </button>
+
+          <button
+            onClick={() => handleSwitchProvider("meta")}
+            disabled={switchingProvider}
+            className={`flex-1 flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
+              activeProvider === "meta"
+                ? "border-blue-500 bg-blue-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Smartphone size={16} className={activeProvider === "meta" ? "text-blue-600" : "text-gray-400"} />
+              <span className={`text-sm font-medium ${activeProvider === "meta" ? "text-blue-700" : "text-gray-600"}`}>
+                Meta WhatsApp
+              </span>
+            </div>
+            {activeProvider === "meta"
+              ? <ToggleRight size={22} className="text-blue-600" />
+              : <ToggleLeft size={22} className="text-gray-300" />}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">
+          Currently active: <strong>{activeProvider === "twilio" ? "Twilio WhatsApp" : "Meta WhatsApp Cloud API"}</strong>
+        </p>
+      </div>
+
       {/* ── Workspace ── */}
       <Section icon={Building2} title="Workspace" subtitle="Your workspace name shown to team members">
         <div className="flex gap-3">
@@ -193,6 +317,7 @@ export default function Settings() {
       </Section>
 
       {/* ── WhatsApp ── */}
+      {activeProvider === "meta" && (
       <Section icon={Smartphone} title="WhatsApp Business API" subtitle="Connect your Meta WhatsApp Cloud API credentials">
 
         {/* Status banner */}
@@ -275,6 +400,100 @@ export default function Settings() {
           </ol>
         </div>
       </Section>
+
+      )}
+
+      {/* ── Twilio ── */}
+      {activeProvider === "twilio" && (
+      <Section icon={Phone} title="Twilio WhatsApp (Alternative)" subtitle="Use Twilio Sandbox for testing without Meta approval">
+
+        {twilioConnected ? (
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-4">
+            <CheckCircle size={14} className="text-green-600" />
+            <span className="text-sm text-green-700">Connected — <strong>{(workspace as any)?.twilio_whatsapp_number}</strong></span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mb-4">
+            <span className="text-sm text-yellow-700">⚠ Not connected — fill in your credentials below</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4">
+          <span className="text-sm text-blue-700">💡 Sandbox number: <strong>+14155238886</strong></span>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Account SID</label>
+            <input
+              value={twilio.account_sid}
+              onChange={(e) => setTwilio((t) => ({ ...t, account_sid: e.target.value }))}
+              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <p className="text-xs text-gray-400">Found in Twilio Console → Account Info</p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Auth Token</label>
+            <div className="relative">
+              <input
+                type={showTwilioToken ? "text" : "password"}
+                value={twilio.auth_token}
+                onChange={(e) => setTwilio((t) => ({ ...t, auth_token: e.target.value }))}
+                placeholder="your_auth_token"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button type="button" onClick={() => setShowTwilioToken(!showTwilioToken)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showTwilioToken ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Twilio WhatsApp Number</label>
+            <input
+              value={twilio.whatsapp_number}
+              onChange={(e) => setTwilio((t) => ({ ...t, whatsapp_number: e.target.value }))}
+              placeholder="+14155238886"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <p className="text-xs text-gray-400">Sandbox number is always +14155238886</p>
+          </div>
+
+          {twilioTestResult && (
+            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+              twilioTestResult.ok ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-700"
+            }`}>
+              {twilioTestResult.ok ? <CheckCircle size={14} /> : "✗"} {twilioTestResult.message}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button onClick={handleSaveTwilio} loading={savingTwilio} variant={twilioSaved ? "secondary" : "primary"}>
+              {twilioSaved ? <><CheckCircle size={14} /> Saved</> : "Save Twilio"}
+            </Button>
+            <Button variant="secondary" onClick={handleTestTwilio} loading={testingTwilio}>
+              Test Connection
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 border-t border-gray-100 pt-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Twilio Setup Steps</p>
+          <ol className="space-y-1.5 text-xs text-gray-500 list-decimal list-inside">
+            <li>Go to <a href="https://console.twilio.com" target="_blank" rel="noreferrer" className="text-green-600 hover:underline">console.twilio.com</a> → Sign up free</li>
+            <li>Go to Messaging → Try it out → Send a WhatsApp message</li>
+            <li>Send <strong>"join &lt;your-sandbox-word&gt;"</strong> from your WhatsApp to <strong>+14155238886</strong></li>
+            <li>Copy Account SID + Auth Token from Console Dashboard</li>
+            <li>Set Webhook URL in Twilio Sandbox settings to: <code className="bg-gray-100 px-1 rounded">https://yourdomain.com/webhook/twilio</code></li>
+            <li>Save credentials here → Test Connection ✅</li>
+          </ol>
+        </div>
+      </Section>
+
+      )}
 
       {/* ── Team Members ── */}
       <Section icon={Users} title="Team Members" subtitle="Invite agents and viewers to your workspace">

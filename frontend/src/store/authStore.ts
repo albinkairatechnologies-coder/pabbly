@@ -2,7 +2,7 @@ import { create } from "zustand";
 import api from "../api/client";
 
 interface User { id: string; email: string; full_name: string }
-interface Workspace { id: string; name: string; slug: string; plan: string }
+interface Workspace { id: string; name: string; slug: string; plan: string; whatsapp_provider?: string; whatsapp_phone_number_id?: string }
 
 interface AuthState {
   user: User | null;

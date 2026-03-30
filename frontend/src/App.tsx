@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "./store/authStore";
 import Login from "./pages/auth/Login";
@@ -16,13 +17,26 @@ import Integrations from "./pages/Integrations";
 import AppLayout from "./components/layout/AppLayout";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.token);
+  const { token, workspace, setWorkspace } = useAuthStore();
+
+  useEffect(() => {
+    if (!token || !workspace) return;
+    // Refresh workspace to get latest whatsapp_provider
+    import("./api/client").then(({ default: api }) => {
+      api.get(`/workspaces/${workspace.id}`).then((r) => {
+        const fresh = r.data;
+        setWorkspace(fresh);
+        localStorage.setItem("workspace", JSON.stringify(fresh));
+      }).catch(() => {});
+    });
+  }, [token]);
+
   return token ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

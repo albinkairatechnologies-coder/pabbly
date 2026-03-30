@@ -28,6 +28,8 @@ class WorkspaceOut(BaseModel):
     plan: str
     is_active: bool
     whatsapp_phone_number_id: str | None
+    whatsapp_provider: str | None = "meta"
+    twilio_whatsapp_number: str | None = None
 
     model_config = {"from_attributes": True}
 

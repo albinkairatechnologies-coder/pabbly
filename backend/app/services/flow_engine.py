@@ -13,7 +13,7 @@ from app.models.message import (
     MessageDirection, MessageStatus, MessageType,
 )
 from app.models.workspace import Workspace
-from app.services.whatsapp import WhatsAppService
+from app.services.whatsapp import WhatsAppService, TwilioWhatsAppService
 
 # All trigger node types (just pass through to next node)
 TRIGGER_TYPES = {
@@ -485,6 +485,14 @@ class FlowEngine:
     # ── DB / WA helpers ───────────────────────────────────────────────────────
 
     def _get_wa(self) -> WhatsAppService:
+        if self.workspace.whatsapp_provider == "twilio":
+            if not self.workspace.twilio_account_sid:
+                raise ValueError("Twilio not configured")
+            return TwilioWhatsAppService(
+                self.workspace.twilio_account_sid,
+                self.workspace.twilio_auth_token,
+                self.workspace.twilio_whatsapp_number,
+            )
         if not self.workspace.whatsapp_access_token:
             raise ValueError("WhatsApp not configured")
         return WhatsAppService(self.workspace.whatsapp_access_token, self.workspace.whatsapp_phone_number_id)

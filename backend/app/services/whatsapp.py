@@ -2,6 +2,48 @@ import httpx
 from app.config import settings
 
 
+class TwilioWhatsAppService:
+    def __init__(self, account_sid: str, auth_token: str, from_number: str):
+        self.account_sid = account_sid
+        self.auth_token = auth_token
+        self.from_number = f"whatsapp:{from_number}" if not from_number.startswith("whatsapp:") else from_number
+
+    async def send_text(self, to: str, message: str) -> dict:
+        to_wa = f"whatsapp:{to}" if not to.startswith("whatsapp:") else to
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json"
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, data={"From": self.from_number, "To": to_wa, "Body": message},
+                                  auth=(self.account_sid, self.auth_token), timeout=15)
+            r.raise_for_status()
+            return r.json()
+
+    async def send_image(self, to: str, image_url: str, caption: str = "") -> dict:
+        to_wa = f"whatsapp:{to}" if not to.startswith("whatsapp:") else to
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json"
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, data={"From": self.from_number, "To": to_wa,
+                                             "Body": caption, "MediaUrl": image_url},
+                                  auth=(self.account_sid, self.auth_token), timeout=15)
+            r.raise_for_status()
+            return r.json()
+
+    # Twilio sandbox doesn't support interactive messages — fallback to text
+    async def send_interactive_buttons(self, to: str, body: str, buttons: list) -> dict:
+        text = body + "\n" + "\n".join(f"{i+1}. {b['title']}" for i, b in enumerate(buttons))
+        return await self.send_text(to, text)
+
+    async def send_interactive_list(self, to: str, body: str, button_text: str, sections: list) -> dict:
+        rows = [r for s in sections for r in s.get("rows", [])]
+        text = body + "\n" + "\n".join(f"{i+1}. {r['title']}" for i, r in enumerate(rows))
+        return await self.send_text(to, text)
+
+    async def send_audio(self, to: str, audio_url: str) -> dict:
+        return await self.send_image(to, audio_url, "")
+
+    async def send_template(self, to: str, template_name: str, language: str, components: list) -> dict:
+        return await self.send_text(to, f"[Template: {template_name}]")
+
+
 class WhatsAppService:
     BASE_URL = f"https://graph.facebook.com/{settings.META_API_VERSION}"
 

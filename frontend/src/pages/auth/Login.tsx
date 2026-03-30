@@ -140,6 +140,12 @@ export default function Login() {
     setTimeout(() => { setPanelVisible(true); startDialIdle(); }, 500);
   };
 
+  // Auto-trigger lamp on mount
+  useEffect(() => {
+    const timer = setTimeout(() => triggerLamp(), 800);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     const svg = cordSvgRef.current;
     if (!svg) return;
@@ -273,7 +279,7 @@ export default function Login() {
       }
 
       await delay(800);
-      navigate("/dashboard");
+      window.location.href = "/dashboard";
 
     } catch (err: any) {
       // Deny access animation

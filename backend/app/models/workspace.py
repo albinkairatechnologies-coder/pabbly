@@ -31,6 +31,12 @@ class Workspace(Base, UUIDMixin, TimestampMixin):
     whatsapp_phone_number_id: Mapped[str | None] = mapped_column(String(100))
     whatsapp_access_token: Mapped[str | None] = mapped_column(String(500))
     whatsapp_business_account_id: Mapped[str | None] = mapped_column(String(100))
+    # Twilio
+    twilio_account_sid: Mapped[str | None] = mapped_column(String(100))
+    twilio_auth_token: Mapped[str | None] = mapped_column(String(100))
+    twilio_whatsapp_number: Mapped[str | None] = mapped_column(String(30))
+    # Provider: meta | twilio
+    whatsapp_provider: Mapped[str] = mapped_column(String(20), default="meta")
     plan: Mapped[PlanType] = mapped_column(Enum(PlanType), default=PlanType.free)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
