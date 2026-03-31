@@ -15,6 +15,7 @@ import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import Integrations from "./pages/Integrations";
 import AppLayout from "./components/layout/AppLayout";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token, workspace, setWorkspace } = useAuthStore();
@@ -40,6 +41,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
         <Route
           element={
             <PrivateRoute>

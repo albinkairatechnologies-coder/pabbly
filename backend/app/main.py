@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
     auth, workspace, webhook, contacts, messages,
-    flows, broadcasts, templates, analytics, billing, integrations,
+    flows, broadcasts, templates, analytics, billing, integrations, admin,
 )
 
 app = FastAPI(title="FlowWA API", version="1.0.0")
@@ -27,6 +27,7 @@ app.include_router(templates.router)
 app.include_router(analytics.router)
 app.include_router(billing.router)
 app.include_router(integrations.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

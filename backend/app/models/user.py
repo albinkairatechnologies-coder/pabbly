@@ -13,5 +13,6 @@ class User(Base, UUIDMixin, TimestampMixin):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False)
 
     workspace_memberships: Mapped[list["WorkspaceMember"]] = relationship(back_populates="user")
