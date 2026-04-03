@@ -15,15 +15,34 @@ from app.services.ws_manager import manager
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
+# ── Test endpoint ──────────────────────────────────────────────────────────────────
+@router.get("/test")
+async def test_webhook():
+    """Test endpoint to verify webhook is accessible"""
+    return {
+        "status": "ok",
+        "message": "Webhook endpoint is accessible",
+        "verify_token": settings.META_WEBHOOK_VERIFY_TOKEN,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 # ── Verify handshake ──────────────────────────────────────────────────────────
 @router.get("/whatsapp")
 async def verify_webhook(
-    hub_mode: str = Query(alias="hub.mode"),
-    hub_verify_token: str = Query(alias="hub.verify_token"),
-    hub_challenge: str = Query(alias="hub.challenge"),
+    hub_mode: str = Query(alias="hub.mode", default=""),
+    hub_verify_token: str = Query(alias="hub.verify_token", default=""),
+    hub_challenge: str = Query(alias="hub.challenge", default=""),
 ):
+    """Meta WhatsApp webhook verification endpoint"""
+    print(f"[WEBHOOK VERIFY] mode={hub_mode}, token={hub_verify_token}, challenge={hub_challenge}")
+    print(f"[WEBHOOK VERIFY] Expected token: {settings.META_WEBHOOK_VERIFY_TOKEN}")
+    
     if hub_mode == "subscribe" and hub_verify_token == settings.META_WEBHOOK_VERIFY_TOKEN:
+        print("[WEBHOOK VERIFY] ✅ Success - returning challenge")
         return int(hub_challenge)
+    
+    print("[WEBHOOK VERIFY] ❌ Failed - token mismatch or invalid mode")
     raise HTTPException(status_code=403, detail="Verification failed")
 
 

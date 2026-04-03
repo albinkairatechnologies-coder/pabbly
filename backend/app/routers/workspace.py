@@ -60,6 +60,21 @@ async def update_whatsapp(workspace_id: uuid.UUID, body: WhatsAppCredentials, us
     return workspace
 
 
+@router.get("/{workspace_id}/whatsapp/webhook-config")
+async def get_webhook_config(workspace_id: uuid.UUID, user: CurrentUser, db: DbDep):
+    """Get webhook configuration for Meta WhatsApp setup"""
+    workspace = await _get_member_workspace(workspace_id, user.id, db)
+    from app.config import settings
+    
+    # You can customize this based on your deployment
+    # For production, use your actual domain
+    return {
+        "callback_url": "/webhook/whatsapp",  # Frontend will prepend the domain
+        "verify_token": settings.META_WEBHOOK_VERIFY_TOKEN,
+        "webhook_fields": ["messages", "message_status"],
+    }
+
+
 @router.get("/{workspace_id}/whatsapp/test")
 async def test_whatsapp(workspace_id: uuid.UUID, user: CurrentUser, db: DbDep):
     workspace = await _get_member_workspace(workspace_id, user.id, db)

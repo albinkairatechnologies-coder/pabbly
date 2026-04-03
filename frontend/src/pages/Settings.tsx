@@ -31,6 +31,9 @@ const updateWorkspace = (workspaceId: string, name: string) =>
 const testWhatsApp = (workspaceId: string) =>
   api.get(`/workspaces/${workspaceId}/whatsapp/test`).then((r) => r.data);
 
+const getWebhookConfig = (workspaceId: string) =>
+  api.get(`/workspaces/${workspaceId}/whatsapp/webhook-config`).then((r) => r.data);
+
 // ── Section wrapper ───────────────────────────────────────
 function Section({ icon: Icon, title, subtitle, children }: {
   icon: any; title: string; subtitle: string; children: React.ReactNode;
@@ -75,6 +78,7 @@ export default function Settings() {
   const [waSaved, setWaSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [webhookConfig, setWebhookConfig] = useState<any>(null);
 
   // Twilio credentials
   const [twilio, setTwilio] = useState({ account_sid: "", auth_token: "", whatsapp_number: "+14155238886" });
@@ -97,6 +101,8 @@ export default function Settings() {
     setActiveProvider((workspace as any).whatsapp_provider ?? "meta");
     if (workspace.whatsapp_phone_number_id) {
       setCreds((c) => ({ ...c, phone_number_id: workspace.whatsapp_phone_number_id! }));
+      // Fetch webhook config when credentials exist
+      getWebhookConfig(workspace.id).then(setWebhookConfig).catch(() => {});
     }
     if ((workspace as any).twilio_whatsapp_number) {
       setTwilio((t) => ({ ...t, whatsapp_number: (workspace as any).twilio_whatsapp_number }));
@@ -152,6 +158,9 @@ export default function Settings() {
       localStorage.setItem("workspace", JSON.stringify(updated));
       setWaSaved(true);
       setTestResult(null);
+      // Fetch webhook config after saving
+      const config = await getWebhookConfig(workspace.id);
+      setWebhookConfig(config);
       setTimeout(() => setWaSaved(false), 3000);
     } catch (err: any) {
       alert(err?.response?.data?.detail ?? "Failed to save WhatsApp credentials");
@@ -386,6 +395,82 @@ export default function Settings() {
             </Button>
           </div>
         </div>
+
+        {/* Webhook Configuration - Show after credentials are saved */}
+        {workspace?.whatsapp_phone_number_id && webhookConfig && (
+          <div className="mt-6 border-t border-gray-200 pt-6">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">📋</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">Webhook Configuration</p>
+                  <p className="text-xs text-blue-600">Copy these values to your Meta App Dashboard</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {/* Callback URL */}
+                <div className="bg-white rounded-lg p-3 border border-blue-100">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Callback URL</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 font-mono break-all">
+                      {window.location.origin.replace(/:\d+$/, ':8000')}{webhookConfig.callback_url}
+                    </code>
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin.replace(/:\d+$/, ':8000')}${webhookConfig.callback_url}`;
+                        copyToClipboard(url);
+                        alert('Callback URL copied to clipboard!');
+                      }}
+                      className="flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      <Copy size={12} /> Copy
+                    </button>
+                  </div>
+                </div>
+
+                {/* Verify Token */}
+                <div className="bg-white rounded-lg p-3 border border-blue-100">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Verify Token</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 font-mono">
+                      {webhookConfig.verify_token}
+                    </code>
+                    <button
+                      onClick={() => {
+                        copyToClipboard(webhookConfig.verify_token);
+                        alert('Verify Token copied to clipboard!');
+                      }}
+                      className="flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      <Copy size={12} /> Copy
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="mt-4 bg-white/50 rounded-lg p-3 border border-blue-100">
+                <p className="text-xs font-semibold text-gray-700 mb-2">📌 Next Steps:</p>
+                <ol className="space-y-1 text-xs text-gray-600 list-decimal list-inside">
+                  <li><strong>Test your webhook first:</strong> Visit <code className="bg-gray-100 px-1 rounded">{window.location.origin.replace(/:\d+$/, ':8000')}/webhook/test</code></li>
+                  <li><strong>If localhost:</strong> Use <a href="https://ngrok.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">ngrok</a> to expose your local server (Meta cannot reach localhost)</li>
+                  <li>Go to <a href="https://developers.facebook.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">Meta for Developers</a></li>
+                  <li>Navigate to: <strong>Your App → WhatsApp → Configuration</strong></li>
+                  <li>Click <strong>Edit</strong> in the Webhook section</li>
+                  <li>Paste the <strong>Callback URL</strong> and <strong>Verify Token</strong> above</li>
+                  <li>Subscribe to webhook fields: <strong>{webhookConfig.webhook_fields.join(', ')}</strong></li>
+                  <li>Click <strong>Verify and Save</strong></li>
+                </ol>
+                <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                  <p className="text-xs text-yellow-800">⚠️ <strong>Important:</strong> If using localhost, you MUST use ngrok or deploy to a public server. Meta requires HTTPS and cannot reach localhost URLs.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Setup guide */}
         <div className="mt-5 border-t border-gray-100 pt-4">

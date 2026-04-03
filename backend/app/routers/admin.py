@@ -37,6 +37,20 @@ class SuspendUpdate(BaseModel):
 class SuperadminGrant(BaseModel):
     is_superadmin: bool
 
+class UserEdit(BaseModel):
+    full_name: str | None = None
+    email: str | None = None
+    is_active: bool | None = None
+
+class ValidityExtend(BaseModel):
+    days: int
+
+class PaymentRecord(BaseModel):
+    amount_inr: float
+    plan: str
+    note: str = ""
+    paid_at: str | None = None
+
 
 # ── Overview stats ────────────────────────────────────────────────────────────
 @router.get("/stats")
@@ -256,11 +270,107 @@ async def set_superadmin(user_id: uuid.UUID, body: SuperadminGrant, user: Curren
 @router.patch("/users/{user_id}/suspend")
 async def suspend_user(user_id: uuid.UUID, body: SuspendUpdate, user: CurrentUser, db: DbDep):
     await require_superadmin(user)
-
     target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
-
     target.is_active = body.is_active
     await db.commit()
     return {"is_active": body.is_active}
+
+
+# ── Edit user ─────────────────────────────────────────────────────────────────
+@router.patch("/users/{user_id}")
+async def edit_user(user_id: uuid.UUID, body: UserEdit, user: CurrentUser, db: DbDep):
+    await require_superadmin(user)
+    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.full_name is not None:
+        target.full_name = body.full_name
+    if body.email is not None:
+        target.email = body.email
+    if body.is_active is not None:
+        target.is_active = body.is_active
+    await db.commit()
+    return {"id": str(target.id), "full_name": target.full_name, "email": target.email, "is_active": target.is_active}
+
+
+# ── Extend subscription validity ──────────────────────────────────────────────
+@router.post("/workspaces/{workspace_id}/extend")
+async def extend_validity(workspace_id: uuid.UUID, body: ValidityExtend, user: CurrentUser, db: DbDep):
+    await require_superadmin(user)
+    from datetime import timedelta
+    sub = (await db.execute(select(Subscription).where(Subscription.workspace_id == workspace_id))).scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="No subscription found")
+
+    # Parse current end or use now
+    try:
+        current_end = datetime.fromisoformat(str(sub.current_period_end))
+    except Exception:
+        current_end = datetime.now(timezone.utc)
+
+    new_end = current_end + timedelta(days=body.days)
+    sub.current_period_end = new_end.isoformat()
+    sub.status = SubscriptionStatus.active
+    await db.commit()
+    return {"new_period_end": sub.current_period_end}
+
+
+# ── Manual payment record ─────────────────────────────────────────────────────
+@router.post("/workspaces/{workspace_id}/payments")
+async def add_payment(workspace_id: uuid.UUID, body: PaymentRecord, user: CurrentUser, db: DbDep):
+    await require_superadmin(user)
+    ws = (await db.execute(select(Workspace).where(Workspace.id == workspace_id))).scalar_one_or_none()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Store as a note in subscription
+    sub = (await db.execute(select(Subscription).where(Subscription.workspace_id == workspace_id))).scalar_one_or_none()
+    paid_at = body.paid_at or datetime.now(timezone.utc).isoformat()
+    # Update plan if provided
+    if body.plan and body.plan in ("free", "starter", "pro", "enterprise"):
+        ws.plan = PlanType(body.plan)
+        if sub:
+            sub.plan = body.plan
+            sub.status = SubscriptionStatus.active
+    await db.commit()
+    return {"status": "recorded", "amount_inr": body.amount_inr, "paid_at": paid_at, "plan": body.plan}
+
+
+# ── Get payments list (from Razorpay or manual) ───────────────────────────────
+@router.get("/workspaces/{workspace_id}/payments")
+async def get_payments(workspace_id: uuid.UUID, user: CurrentUser, db: DbDep):
+    await require_superadmin(user)
+    sub = (await db.execute(select(Subscription).where(Subscription.workspace_id == workspace_id))).scalar_one_or_none()
+    if not sub or not sub.razorpay_subscription_id:
+        return []
+    from app.config import settings
+    if not settings.RAZORPAY_KEY_ID:
+        return []
+    try:
+        import razorpay
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        payments = client.payment.all({"subscription_id": sub.razorpay_subscription_id})
+        return payments.get("items", [])
+    except Exception:
+        return []
+
+
+# ── Revenue chart (last 6 months) ─────────────────────────────────────────────
+@router.get("/revenue")
+async def revenue_chart(user: CurrentUser, db: DbDep):
+    await require_superadmin(user)
+    PLAN_PRICE = {"free": 0, "starter": 999, "pro": 2499, "enterprise": 7999}
+    from datetime import timedelta
+    months = []
+    now = datetime.now(timezone.utc)
+    for i in range(5, -1, -1):
+        d = now.replace(day=1) - timedelta(days=i * 28)
+        label = d.strftime("%b %Y")
+        # count active paid workspaces that month (simplified)
+        rows = (await db.execute(
+            select(Workspace.plan, func.count(Workspace.id)).group_by(Workspace.plan)
+        )).all()
+        mrr = sum(PLAN_PRICE.get(str(r[0]).replace("PlanType.", ""), 0) * r[1] for r in rows)
+        months.append({"month": label, "mrr": mrr})
+    return months
